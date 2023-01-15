@@ -1,7 +1,6 @@
 import datetime
 import requests
 import sys
-from time import sleep
 from datetime import datetime, timedelta
 
 from simple_term_menu import TerminalMenu
@@ -104,21 +103,14 @@ class Lotto:
         today = datetime.today()
         age_of_pull = 0
         if Lotto.LAST_PULL_DATE is not None:
-            print(f"{today = }")
-            print(f"{Lotto.LAST_PULL_DATE = }")
             age_of_pull = today - Lotto.LAST_PULL_DATE
-            print(f"{age_of_pull = }")
             age_of_pull = age_of_pull.days
-            sleep(2)
         if (Lotto.WIN_NUMS is not None) and (age_of_pull <= 7):
             return
         self.mm_thread = CustomThread(self.pull_mm)
         self.mm_thread.setDaemon(True)  # allow for early Ctrl+C
         self.mm_thread.start()
         # todo unlock
-        # todo take out
-        print("Updating nums!!!!!!!!")
-        sleep(2)
     
     def check_entries(self, entries):
         if self.mm_thread is None:
