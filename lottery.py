@@ -15,14 +15,19 @@ PB_MULTI_MAX = 26
 
 MM_WINNING_LIST = [2,4,10,10,200,500,10000,1000000, "Jackpot"]
 
+def noop(*args, **kwargs):
+    return
+
 class LottoNums:
     """Lotto number class"""
+    MM = 0
+    PB = 1
     
     def __init__(self, type, nums=None):
         """Creates a Lotto number listing
 
         Arguments:
-        type -- 0 for MegaMillions; non-zero for Powerball
+        type -- class viariables of MM and PB
         nums -- List (ie: [prim_nums, multi]) where prim_nums is a set of the
                    primary 5 nums, and multi is a set of the multiplier
                    NOTE: both sets should be sets of string repr of ints
@@ -31,21 +36,41 @@ class LottoNums:
             LottoNums object
         """
         self.prim_nums = None
-        if type == 0:
+        # set max depending on which lotto
+        if type == LottoNums.MM:
             prim_max = MM_PRIM_MAX
             multi_max = MM_MULTI_MAX
         else:
             prim_max = PB_PRIM_MAX
             multi_max = PB_MULTI_MAX
-            
+        
+        # see if user needs to enter the entry or if it was given
         if nums is None:
             while self.prim_nums is None:
                 self.get_entry(prim_max, multi_max)
         else:
             self.prim_nums = nums[0]
             self.multi = nums[1]
+    
+    def __str__(self):
+        """gives the string rep of the object"""
+        strng = str(" ".join(self.prim_nums))
+        return f"{strng} {list(self.multi)[0]}"
+    
+    def __eq__(self, other):
+        """determines if LottoNums are equal"""
+        prims_match = self.prim_nums == other.prim_nums
+        multi_match = self.multi == other.multi
+        return prims_match and multi_match
 
     def get_entry(self, prim_max, multi_max):
+        """gets user input to make a new entry
+
+        Arguments:
+        prim_max -- Int the max value that a primary number can be
+        multi_max -- Int the max value that a multiplier can be
+        """
+        # loop till valid lotto number
         while True:
             unparsed_entry = input("Enter entry: ").strip()
             parsed_entry = unparsed_entry.split(" ")
@@ -54,22 +79,32 @@ class LottoNums:
             else:
                 prim_nums_str = parsed_entry[:5]
                 multi_str = parsed_entry[-1]
-                # check nums
+                # check nums validity
                 if len(set(prim_nums_str)) != 5:
                     print("Primary nums must be unique.")
                 else:
-                    self.cast_primary_nums(prim_nums_str, prim_max)
+                    self.validate_prims(prim_nums_str, prim_max)
 
                     multi = self.chech_num("Multiplier", multi_str, multi_max)
                     if (multi is not None) and (self.prim_nums is not None):
                         break
             print("Try again.")
 
+        # set the lotto numbers of the entry
         self.prim_nums = set(prim_nums_str)
         self.multi = {multi_str}
     
     @staticmethod
     def chech_num(num_name, str_num, max):
+        """checks the validity of a specific number of an entry
+        
+        Arguments:
+        str_num -- the string of the number being played
+        max -- Int the max value that the num can be
+
+        Returns:
+        The number as an int if valid; None if invalid
+        """
         range_err = ValueError(f"{num_name} {str_num} is not in the range of {MIN} and {max}")
         try:
             num = int(str_num)
@@ -82,54 +117,82 @@ class LottoNums:
             else:
                 print(ex)
     
-    def cast_primary_nums(self, prim_nums_str, prim_max):
+    def validate_prims(self, prim_nums_str, prim_max):
+        """checks each primary number is valid
+
+        NOTE: validation of only 5 unique numbers must have already been done
+        
+        Arguments:
+        prim_nums -- string of the primary numbers being played
+        prim_max -- Int the max a primary number can be
+        """
         prim_nums = list()
         for num in prim_nums_str:
             num = self.chech_num("Primary", num, prim_max)
             if num is None:
-                return None
+                return
             prim_nums.append(num)
         self.prim_nums = prim_nums
 
 class Lotto:
+    # todo could make a mm and pb class that the lotto owns
+    """The class to represent a Lotto"""
     WIN_NUMS = None
     LAST_PULL_DATE = None
 
     def __init__(self):
+        """creates a Lotto object
+        """
         self.update_lotto()
     
     def update_lotto(self):
-        # todo lock thread if it is not None
+        """makes sure the lotto is the most up-to-date listing"""
         today = datetime.today()
         age_of_pull = 0
         if Lotto.LAST_PULL_DATE is not None:
+            # calculate the age since the last pull if it has already been set
             age_of_pull = today - Lotto.LAST_PULL_DATE
             age_of_pull = age_of_pull.days
         if (Lotto.WIN_NUMS is not None) and (age_of_pull <= 7):
+            # lotto is up-to-date, does not need to be pulled again
             return
+        # the lotto needs to be pulled again
         self.mm_thread = CustomThread(self.pull_mm)
         self.mm_thread.setDaemon(True)  # allow for early Ctrl+C
         self.mm_thread.start()
-        # todo unlock
     
     def check_entries(self, entries):
+        """checks a list of entries to find out winnings
+        
+        Arguments:
+        entries -- List of LottoNums that have been played
+        """
+        # update the lotto if needed
         if self.mm_thread is None:
             self.update_lotto()
         if self.mm_thread is not None:
+            # still waiting on the most recent lotto pulling
             self.mm_thread.waiting_obj.set_waiting()
             self.mm_thread.join()
             self.game_name, self.win_prim, self.win_multi = self.mm_thread.value
             self.mm_thread = None
-        Lotto.WIN_NUMS = LottoNums(type=0, nums=[self.win_prim, self.win_multi])
-        print(f"{self.game_name} win: {Lotto.WIN_NUMS.prim_nums} {Lotto.WIN_NUMS.multi}")
+        # save the winning numbers
+        Lotto.WIN_NUMS = LottoNums(type=LottoNums.MM, nums=[self.win_prim, self.win_multi])
 
+        # check each entry for its winnings
         for entry in entries:
             winnings = self.check_wins(MM_WINNING_LIST, entry)
             print(f"Played: {entry.prim_nums} {entry.multi}")
             print(f"Won: {winnings}")
 
-    # self not used but needed to be used with Custom
+    # self not used but needed to be used with CustomThread
     def pull_mm(self):
+        """pulls the most up-to-date mega millions drawing
+        
+        Returns:
+        tuple -- game name(string), set of prim_nums, set of multi
+        Note: Each set element is an string
+        """
         jackpot = requests.get('https://lottery.sd.gov/api/igt/v2/draw-games/draws/?game-names=Mega%20Millions').json()['draws'][1]
 
         game_name = jackpot['gameName']
@@ -145,11 +208,21 @@ class Lotto:
         return game_name, set(prim_nums), {multi}
 
     def check_wins(self, winning_list, played_nums):
+        """checks the winning money of a single entry
+        
+        Arguments:
+        winning_list -- list of possible winnings, from least to most
+        played_nums -- LottoNums object of the entry to check
+        
+        Returns:
+        str - the won amount (can be 'Jackpot')
+        """
         # todo include powerplay option for powerball
         matching = len(played_nums.prim_nums & Lotto.WIN_NUMS.prim_nums)
         jackpot_matching = Lotto.WIN_NUMS.multi & played_nums.multi
         # not using match case for backwards compatability down till 3.6
         winnings = 0
+        # get the winning money amount
         if matching == 0:
             if jackpot_matching:
                 winnings = winning_list[0]
@@ -179,73 +252,154 @@ class Lotto:
         return winnings
 
 class LottoMenu:
+    """class for the Menu"""
     def __init__(self):
+        """creates a LottoMenu object"""
         # set up lottos
         self.mega_millions = Lotto()
         self.mm_entries = list()
         # todo add powerball
         self.pb_entries = list()
+        self.lotto_menu = None
         self.main_menu()
     
     def main_menu(self):
+        """displayes the main menu"""
         prompt = "Which lotto do you want to check?"
         options = {"Mega Millions": self.mega_millions_view}
         self.funct_menu(options, prompt)
     
     def mega_millions_view(self):
-        self.current_type = 0  # mega millions
-        self.new_entry()
-    
-    @classmethod
-    def pass_option(cls):
-        pass
+        """displays the mm menu"""
+        self.lotto_menu = self.mega_millions_view
+        self.mm_menu()
 
     def funct_menu(self, options, prompt=None):
+        """used by other functions to display a TerminalMenu
+        
+        Aruments:
+        options -- Dict key is the label for the option, the value is the funct
+                   to call if the option is selected
+        prompt -- if give: will be a prompt for the menu options
+        """
+        # look to account for cancels with Ctrl+C/D
         while True:
+            # display menu and get choice
             key_list = list(options.keys())
             if prompt is not None:
                 terminal_menu = TerminalMenu(key_list, title=prompt)
             else:
                 terminal_menu = TerminalMenu(key_list)
             menu_entry_index = terminal_menu.show()
+            # accounts for Ctrl+C/D
             if menu_entry_index is None:
-                # Ctrl+C/D
-                quit_prompt = "Quit?"
-                quit_options = ["Cancel", "Yes"]
-                terminal_menu = TerminalMenu(quit_options, title=quit_prompt)
-                menu_entry_index = terminal_menu.show()
-                if menu_entry_index == 1:
+                try:
+                    # verify quit
+                    self.quit_funct()
+                except KeyboardInterrupt:
                     return
             else:
                 break
+        
+        # goes to the next function depending on the choice
         options[key_list[menu_entry_index]]()
+
+    def quit_funct(self):
+        # todo make a previous menu option
+        """verifies if a user wants to quit or not
+        
+        Raises:
+        Keyboard Interrupt -- user Ctrl+C/D
+        """
+        quit_prompt = "Quit?"
+        quit_options = ["Cancel", "Yes"]
+        terminal_menu = TerminalMenu(quit_options, title=quit_prompt)
+        menu_entry_index = terminal_menu.show()
+        if menu_entry_index == 1:
+            raise KeyboardInterrupt("User Quit")
     
     def mm_menu(self):
-        options = {"New Entry": self.new_entry, "Done": self.check_entries}
-        self.funct_menu(options)
+        """displays the main menu"""
+        # build out options
+        options = {"New Entry": self.new_entry}
+        if self.lotto_menu is self.mega_millions_view:
+            current_list = self.mm_entries
+        else:
+            current_list = self.pb_entries
+        if len(current_list) != 0:
+            options["Done"] = self.check_entries
+        # get choice
+        try:
+            self.funct_menu(options)
+        except KeyboardInterrupt:
+            pass
+
+    def verify_dup(self, played_nums):
+        """check if the entry has already been submitted
+        
+        Arguments:
+        played_nums -- LottoNumbs object of entry
+
+        Raises:
+        ValueError -- played nums is a duplicate
+        """
+        if self.lotto_menu is self.mega_millions_view:
+            current_list = self.mm_entries
+        else:
+            current_list = self.pb_entries
+        if played_nums in current_list:
+            raise ValueError(f"{played_nums} has already been played.")
 
     def new_entry(self):
-        # todo make sure it is not a dup entry
-        try:
-            played_nums = LottoNums(type=self.current_type)
-        except (KeyboardInterrupt, EOFError):  # todo do this better?
-            sys.exit()
-        if self.current_type == 0:
+        """gets a new entry from user"""
+        # todo allow for a back out on top of quit or cancel
+        if self.lotto_menu is self.mega_millions_view:
+            current_type = LottoNums.MM
+        else:
+            current_type = LottoNums.PB
+        while True:
+            try:
+                played_nums = LottoNums(type=current_type)
+                self.verify_dup(played_nums)
+                break
+            except (KeyboardInterrupt, EOFError):
+                self.quit_funct()
+            except ValueError as ex:
+                options = {"Submit Duplicate": noop, "Try again": self.dup_retry}
+                try:
+                    self.funct_menu(options, prompt=str(ex))
+                    break
+                except ValueError:
+                    # user wants to try again
+                    pass
+        if self.lotto_menu is self.mega_millions_view:
             self.mm_entries.append(played_nums)
         else:
             self.pb_entries.append(played_nums)
         self.mm_menu()
+    
+    def dup_retry(self):
+        """used in new_entry to alert that a user wants to try again with a
+        duplicate entry. This is needed because funct_menu needs a function
+        
+        Raises:
+        ValueError -- always
+        """
+        raise ValueError("User trying again.")
 
     def check_entries(self):
-        self.mega_millions.check_entries(self.mm_entries if self.current_type == 0 else self.pb_entries)
+        """checks entries then goes back to the main menu"""
+        current_list = self.pb_entries
+        if self.lotto_menu is self.mega_millions_view:
+            current_list = self.mm_entries
+        self.mega_millions.check_entries(current_list)
         self.main_menu()
         
 
 def main():
+    """main function of the program"""
     #todo list the jackpot
-    #todo multiple entries
     #todo make sure game name is used
-    #todo use terminal menu to select type as well as ask if this is the last listing
     LottoMenu()
 
 if __name__ == "__main__":
