@@ -110,7 +110,7 @@ class Lotto:
             print(f"{age_of_pull = }")
             age_of_pull = age_of_pull.days
             sleep(2)
-        if (Lotto.WIN_NUMS is not None) and (age_of_pull <= 5):
+        if (Lotto.WIN_NUMS is not None) and (age_of_pull <= 7):
             return
         self.mm_thread = CustomThread(self.pull_mm)
         self.mm_thread.setDaemon(True)  # allow for early Ctrl+C
