@@ -19,10 +19,6 @@ class CustomThread(Thread):
         self.value_set = True
         self.waiting_thread.join()
     
-    def join_result(self):
-        self.waiting_obj.set_waiting()
-        self.join()
-    
     @staticmethod
     def waiting_msg(waiting_obj, original_object):
         printed_waiting_msg = False
