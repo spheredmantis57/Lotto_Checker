@@ -1,6 +1,6 @@
 import datetime
 import requests
-import sys
+import abc
 from datetime import datetime, timedelta
 
 from simple_term_menu import TerminalMenu
@@ -12,8 +12,6 @@ MM_PRIM_MAX = 70
 MM_MULTI_MAX = 25
 PB_PRIM_MAX = 69
 PB_MULTI_MAX = 26
-
-MM_WINNING_LIST = [2,4,10,10,200,500,10000,1000000, "Jackpot"]
 
 def noop(*args, **kwargs):
     return
@@ -75,7 +73,7 @@ class LottoNums:
             unparsed_entry = input("Enter entry: ").strip()
             parsed_entry = unparsed_entry.split(" ")
             if len(parsed_entry) != 6:
-                print("Only 5 nums may be played.")
+                print("Exactly 5 nums may be played.")
             else:
                 prim_nums_str = parsed_entry[:5]
                 multi_str = parsed_entry[-1]
@@ -134,32 +132,36 @@ class LottoNums:
             prim_nums.append(num)
         self.prim_nums = prim_nums
 
-class Lotto:
-    # todo could make a mm and pb class that the lotto owns
-    """The class to represent a Lotto"""
-    WIN_NUMS = None
-    LAST_PULL_DATE = None
+class IndividualLotto(abc.ABC):
+    # NOTE: must make child classes singletons
+    WINNING_LIST: str = NotImplemented
+    WIN_NUMS: LottoNums = NotImplemented
+    LAST_PULL_DATE: datetime = NotImplemented
+    THREAD: CustomThread = NotImplemented
+    TYPE: int = NotImplemented  # from LottoNums
 
     def __init__(self):
-        """creates a Lotto object
-        """
-        self.update_lotto()
-    
+        super().__init__()
+
+    @abc.abstractmethod
+    def pull(self):
+        pass
+
     def update_lotto(self):
         """makes sure the lotto is the most up-to-date listing"""
         today = datetime.today()
         age_of_pull = 0
-        if Lotto.LAST_PULL_DATE is not None:
+        if self.LAST_PULL_DATE is not None:
             # calculate the age since the last pull if it has already been set
-            age_of_pull = today - Lotto.LAST_PULL_DATE
+            age_of_pull = today - self.LAST_PULL_DATE
             age_of_pull = age_of_pull.days
-        if (Lotto.WIN_NUMS is not None) and (age_of_pull <= 7):
+        if (self.WIN_NUMS is not None or self.THREAD is not None) and (age_of_pull <= 7):
             # lotto is up-to-date, does not need to be pulled again
             return
         # the lotto needs to be pulled again
-        self.mm_thread = CustomThread(self.pull_mm)
-        self.mm_thread.setDaemon(True)  # allow for early Ctrl+C
-        self.mm_thread.start()
+        self.THREAD = CustomThread(self.pull)
+        self.THREAD.setDaemon(True)  # allow for early Ctrl+C
+        self.THREAD.start()
     
     def check_entries(self, entries):
         """checks a list of entries to find out winnings
@@ -168,44 +170,22 @@ class Lotto:
         entries -- List of LottoNums that have been played
         """
         # update the lotto if needed
-        if self.mm_thread is None:
+        if self.THREAD is None:
             self.update_lotto()
-        if self.mm_thread is not None:
+        else:
             # still waiting on the most recent lotto pulling
-            self.mm_thread.waiting_obj.set_waiting()
-            self.mm_thread.join()
-            self.game_name, self.win_prim, self.win_multi = self.mm_thread.value
-            self.mm_thread = None
+            self.THREAD.waiting_obj.set_waiting()
+            self.THREAD.join()
+            self.game_name, self.win_prim, self.win_multi = self.THREAD.value
+            self.THREAD = None
         # save the winning numbers
-        Lotto.WIN_NUMS = LottoNums(type=LottoNums.MM, nums=[self.win_prim, self.win_multi])
+        self.WIN_NUMS = LottoNums(type=self.TYPE, nums=[self.win_prim, self.win_multi])
 
         # check each entry for its winnings
         for entry in entries:
-            winnings = self.check_wins(MM_WINNING_LIST, entry)
+            winnings = self.check_wins(self.WINNING_LIST, entry)
             print(f"Played: {entry.prim_nums} {entry.multi}")
             print(f"Won: {winnings}")
-
-    # self not used but needed to be used with CustomThread
-    def pull_mm(self):
-        """pulls the most up-to-date mega millions drawing
-        
-        Returns:
-        tuple -- game name(string), set of prim_nums, set of multi
-        Note: Each set element is an string
-        """
-        jackpot = requests.get('https://lottery.sd.gov/api/igt/v2/draw-games/draws/?game-names=Mega%20Millions').json()['draws'][1]
-
-        game_name = jackpot['gameName']
-        results = jackpot['results'][0]
-        prim_nums = results['primary']
-        multi = results['secondary'][0]
-
-        # set time of last pull to last draw 
-        # (+23 hours to get to correct time, they do midnight for the time stamp 
-        # not 2300)
-        Lotto.LAST_PULL_DATE = datetime.fromtimestamp(int(str(jackpot['drawTime'])[:10])) + timedelta(hours=23)
-
-        return game_name, set(prim_nums), {multi}
 
     def check_wins(self, winning_list, played_nums):
         """checks the winning money of a single entry
@@ -218,8 +198,8 @@ class Lotto:
         str - the won amount (can be 'Jackpot')
         """
         # todo include powerplay option for powerball
-        matching = len(played_nums.prim_nums & Lotto.WIN_NUMS.prim_nums)
-        jackpot_matching = Lotto.WIN_NUMS.multi & played_nums.multi
+        matching = len(played_nums.prim_nums & self.WIN_NUMS.prim_nums)
+        jackpot_matching = self.WIN_NUMS.multi & played_nums.multi
         # not using match case for backwards compatability down till 3.6
         winnings = 0
         # get the winning money amount
@@ -251,27 +231,68 @@ class Lotto:
             winnings = f"${winnings:,}"
         return winnings
 
+class MegaMillions(IndividualLotto):
+    # todo doc strings
+    WIN_NUMS = None
+    LAST_PULL_DATE = None
+    WINNING_LIST = [2,4,10,10,200,500,10000,1000000, "Jackpot"]
+    THREAD = None
+    TYPE = LottoNums.MM
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(MegaMillions, cls).__new__(cls)
+        return cls.instance
+
+    def __init__(self):
+        super().__init__()
+        self.update_lotto()
+
+    def pull(self):
+        """pulls the most up-to-date mega millions drawing
+        
+        Returns:
+        tuple -- game name(string), set of prim_nums, set of multi
+        Note: Each set element is an string
+        """
+        jackpot = requests.get('https://lottery.sd.gov/api/igt/v2/draw-games/draws/?game-names=Mega%20Millions').json()['draws'][1]
+
+        game_name = jackpot['gameName']
+        results = jackpot['results'][0]
+        prim_nums = results['primary']
+        multi = results['secondary'][0]
+
+        # set time of last pull to last draw 
+        # (+23 hours to get to correct time, they do midnight for the time stamp 
+        # not 2300)
+        self.LAST_PULL_DATE = datetime.fromtimestamp(int(str(jackpot['drawTime'])[:10])) + timedelta(hours=23)
+
+        return game_name, set(prim_nums), {multi}
+
 class LottoMenu:
     """class for the Menu"""
     def __init__(self):
         """creates a LottoMenu object"""
         # set up lottos
-        self.mega_millions = Lotto()
+        MegaMillions()
+        self.current_lotto = MegaMillions
         self.mm_entries = list()
         # todo add powerball
         self.pb_entries = list()
-        self.lotto_menu = None
+        self._menu = None
         self.main_menu()
     
     def main_menu(self):
+        # todo ask if they would like to clear the previous entires
         """displayes the main menu"""
         prompt = "Which lotto do you want to check?"
+        # todo add powerball
         options = {"Mega Millions": self.mega_millions_view}
         self.funct_menu(options, prompt)
     
     def mega_millions_view(self):
         """displays the mm menu"""
-        self.lotto_menu = self.mega_millions_view
+        self._menu = self.mega_millions_view
         self.mm_menu()
 
     def funct_menu(self, options, prompt=None):
@@ -322,7 +343,7 @@ class LottoMenu:
         """displays the main menu"""
         # build out options
         options = {"New Entry": self.new_entry}
-        if self.lotto_menu is self.mega_millions_view:
+        if self._menu is self.mega_millions_view:
             current_list = self.mm_entries
         else:
             current_list = self.pb_entries
@@ -343,7 +364,7 @@ class LottoMenu:
         Raises:
         ValueError -- played nums is a duplicate
         """
-        if self.lotto_menu is self.mega_millions_view:
+        if self._menu is self.mega_millions_view:
             current_list = self.mm_entries
         else:
             current_list = self.pb_entries
@@ -353,7 +374,7 @@ class LottoMenu:
     def new_entry(self):
         """gets a new entry from user"""
         # todo allow for a back out on top of quit or cancel
-        if self.lotto_menu is self.mega_millions_view:
+        if self._menu is self.mega_millions_view:
             current_type = LottoNums.MM
         else:
             current_type = LottoNums.PB
@@ -372,7 +393,7 @@ class LottoMenu:
                 except ValueError:
                     # user wants to try again
                     pass
-        if self.lotto_menu is self.mega_millions_view:
+        if self._menu is self.mega_millions_view:
             self.mm_entries.append(played_nums)
         else:
             self.pb_entries.append(played_nums)
@@ -390,9 +411,9 @@ class LottoMenu:
     def check_entries(self):
         """checks entries then goes back to the main menu"""
         current_list = self.pb_entries
-        if self.lotto_menu is self.mega_millions_view:
+        if self._menu is self.mega_millions_view:
             current_list = self.mm_entries
-        self.mega_millions.check_entries(current_list)
+        self.current_lotto().check_entries(current_list)
         self.main_menu()
         
 
