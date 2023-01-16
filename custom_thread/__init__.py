@@ -1,2 +1,0 @@
-from .custom_thread_class import CustomThread
-from .waiting_obj_class import WaitingObject
