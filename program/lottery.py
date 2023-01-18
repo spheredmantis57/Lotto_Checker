@@ -163,7 +163,7 @@ class IndividualLotto(abc.ABC):
             return
         # the lotto needs to be pulled again
         self.THREAD = CustomThread(self.pull)
-        self.THREAD.setDaemon(True)  # allow for early Ctrl+C
+        self.THREAD.deamon = True  # allow for early Ctrl+C
         self.THREAD.start()
     
     def check_entries(self, entries):
