@@ -10,7 +10,7 @@ class CustomThread(Thread):
         self.get_results = get_results
         self.waiting_obj = WaitingObject()
         self.waiting_thread = Thread(target=self.waiting_msg, args=(self.waiting_obj, self))
-        self.waiting_thread.setDaemon(True)
+        self.waiting_thread.deamon = True
         self.waiting_thread.start()
     
     def run(self):
