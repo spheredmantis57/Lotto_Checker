@@ -4,7 +4,7 @@ import abc
 from datetime import datetime, timedelta
 import signal
 
-from simple_term_menu import TerminalMenu
+from pick import pick
 import requests
 
 from custom_thread import CustomThread
@@ -311,7 +311,7 @@ class LottoMenu:
         self.mm_menu()
 
     def funct_menu(self, options, prompt=None):
-        """used by other functions to display a TerminalMenu
+        """used by other functions to display a pick
         
         Aruments:
         options -- Dict key is the label for the option, the value is the funct
@@ -323,12 +323,12 @@ class LottoMenu:
             # display menu and get choice
             key_list = list(options.keys())
             if prompt is not None:
-                terminal_menu = TerminalMenu(key_list, title=prompt)
+                choice_tuple = pick(key_list, title=prompt)
             else:
-                terminal_menu = TerminalMenu(key_list)
-            menu_entry_index = terminal_menu.show()
+                choice_tuple = pick(key_list)
+            # menu_entry_index = choice_tuple.show()
             # accounts for Ctrl+C/D
-            if menu_entry_index is None:
+            if choice_tuple is None:
                 try:
                     # verify quit
                     self.quit_funct()
@@ -338,7 +338,7 @@ class LottoMenu:
                 break
         
         # goes to the next function depending on the choice
-        options[key_list[menu_entry_index]]()
+        options[choice_tuple[0]]()
 
     def quit_funct(self):
         # todo make a previous menu option
@@ -349,9 +349,8 @@ class LottoMenu:
         """
         quit_prompt = "Quit?"
         quit_options = ["Cancel", "Yes"]
-        terminal_menu = TerminalMenu(quit_options, title=quit_prompt)
-        menu_entry_index = terminal_menu.show()
-        if menu_entry_index == 1:
+        choice_tuple = pick(quit_options, title=quit_prompt)
+        if choice_tuple[1] == 1:
             raise KeyboardInterrupt("User Quit")
     
     def mm_menu(self):
@@ -429,7 +428,17 @@ class LottoMenu:
         if self._menu is self.mega_millions_view:
             current_list = self.mm_entries
         self.current_lotto().check_entries(current_list)
+        self.disp_continue()
         self.main_menu()
+    
+    def disp_continue(self):
+        try:
+            input("CONTINUE?")
+        except (KeyboardInterrupt, EOFError):
+            try:
+                self.quit_funct()
+            except (KeyboardInterrupt, EOFError):
+                raise KeyboardInterrupt("User quitting")
         
 
 def main():
