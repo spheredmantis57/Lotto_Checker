@@ -279,8 +279,8 @@ class LottoMenu:
     """class for the Menu"""
     def __init__(self):
         """creates a LottoMenu object"""
-        self.orig_handler = signal.signal(signal.SIGINT, self.handler)
-        self.allow_sigint = False
+        # self.orig_handler = signal.signal(signal.SIGINT, self.handler)
+        # self.allow_sigint = False
         # set up lottos
         MegaMillions()
         self.current_lotto = MegaMillions
@@ -292,11 +292,12 @@ class LottoMenu:
         self.allow_sigint = True
         self.main_menu()
     
-    def handler(self, signum, frame):
-        if self.allow_sigint:
-            self.orig_handler(signum, frame)
-        else:
-            pass
+    # def handler(self, signum, frame):
+    #     if self.allow_sigint:
+    #         raise KeyboardInterrupt()
+    #         # self.orig_handler(signum, frame)
+    #     else:
+    #         pass
     
     def main_menu(self):
         # todo ask if they would like to clear the previous entires
@@ -319,25 +320,23 @@ class LottoMenu:
                    to call if the option is selected
         prompt -- if give: will be a prompt for the menu options
         """
-        os.system("cls | clear")
+        os.system("cls 2> /dev/null | clear 2> /dev/null")
         # look to account for cancels with Ctrl+C/D
         while True:
             # display menu and get choice
             key_list = list(options.keys())
-            if prompt is not None:
-                choice_tuple = pick(key_list, title=prompt)
-            else:
-                choice_tuple = pick(key_list)
-            # menu_entry_index = choice_tuple.show()
-            # accounts for Ctrl+C/D
-            if choice_tuple is None:
+            try:
+                if prompt is not None:
+                    choice_tuple = pick(key_list, title=prompt)
+                else:
+                    choice_tuple = pick(key_list)
+                break
+            except KeyboardInterrupt:
                 try:
                     # verify quit
                     self.quit_funct()
                 except KeyboardInterrupt:
                     return
-            else:
-                break
         
         # goes to the next function depending on the choice
         options[choice_tuple[0]]()
