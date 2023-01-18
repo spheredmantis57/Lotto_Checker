@@ -320,7 +320,7 @@ class LottoMenu:
                    to call if the option is selected
         prompt -- if give: will be a prompt for the menu options
         """
-        os.system("cls 2> /dev/null | clear 2> /dev/null")
+        os.system("clear") if os.name == "posix" else os.system("cls")
         # look to account for cancels with Ctrl+C/D
         while True:
             # display menu and get choice
