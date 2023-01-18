@@ -1,4 +1,5 @@
 import datetime
+import os
 from time import sleep
 import abc
 from datetime import datetime, timedelta
@@ -318,6 +319,7 @@ class LottoMenu:
                    to call if the option is selected
         prompt -- if give: will be a prompt for the menu options
         """
+        os.system("cls | clear")
         # look to account for cancels with Ctrl+C/D
         while True:
             # display menu and get choice
